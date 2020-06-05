@@ -1,54 +1,47 @@
 import numpy as np
 import math
-def get_scale_csi(csi_st):
-    #Pull out csi
-    csi = csi_st['csi']
-    # print(csi.shape)
-    # print(csi)
-    #Calculate the scale factor between normalized CSI and RSSI (mW)
+from Bfee import Bfee
+
+def get_scale_csi(bfee: Bfee):
+    csi = bfee.csi
+    # Calculate the scale factor between normalized CSI and RSSI (mW)
     csi_sq = np.multiply(csi, np.conj(csi)).real
     csi_pwr = np.sum(csi_sq, axis=0)
     csi_pwr = csi_pwr.reshape(1, csi_pwr.shape[0], -1)
-    rssi_pwr = dbinv(get_total_rss(csi_st))
+    rssi_pwr = dbinv(get_total_rss(bfee))
 
     scale = rssi_pwr / (csi_pwr / 30)
 
-    if csi_st['noise'] == -127:
+    if bfee.noise == -127:
         noise_db = -92
     else:
-        noise_db = csi_st['noise']
+        noise_db = bfee.noise
     thermal_noise_pwr = dbinv(noise_db)
 
-    quant_error_pwr = scale * (csi_st['Nrx'] * csi_st['Ntx'])
+    quant_error_pwr = scale * (bfee.Nrx * bfee.Ntx)
 
     total_noise_pwr = thermal_noise_pwr + quant_error_pwr
     ret = csi * np.sqrt(scale / total_noise_pwr)
-    if csi_st['Ntx'] == 2:
-        ret = ret * math.sqrt(2)
-    elif csi_st['Ntx'] == 3:
-        ret = ret * math.sqrt(dbinv(4.5))
+    if bfee.Ntx == 2:
+        ret *= math.sqrt(2)
+    elif bfee.Ntx == 3:
+        ret *= math.sqrt(dbinv(4.5))
     return ret
 
-def get_total_rss(csi_st):
+def get_total_rss(bfee: Bfee):
     # Careful here: rssis could be zero
     rssi_mag = 0
-    if csi_st['rssi_a'] != 0:
-        rssi_mag = rssi_mag + dbinv(csi_st['rssi_a'])
-    if csi_st['rssi_b'] != 0:
-        rssi_mag = rssi_mag + dbinv(csi_st['rssi_b'])
-    if csi_st['rssi_c'] != 0:
-        rssi_mag = rssi_mag + dbinv(csi_st['rssi_c'])
-    return db(rssi_mag, 'power') - 44 - csi_st['agc']
+    if bfee.rssi_a != 0:
+        rssi_mag += dbinv(bfee.rssi_a)
+    if bfee.rssi_b != 0:
+        rssi_mag += dbinv(bfee.rssi_b)
+    if bfee.rssi_c != 0:
+        rssi_mag += dbinv(bfee.rssi_c)
+    return db(rssi_mag) - 44 - bfee.agc
 
 def dbinv(x):
-    return math.pow(10, x / 10)
+    return math.pow(10, x / 10) # 求db的逆过程 分贝毫瓦？
 
-def db(X, U):
-    R = 1
-    if 'power'.startswith(U):
-        assert X >= 0
-    else:
-        X = math.pow(abs(X), 2) / R
-
+def db(X):
+    assert X >= 0
     return (10 * math.log10(X) + 300) - 300
-    
